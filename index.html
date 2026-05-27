@@ -1,0 +1,519 @@
+<?php
+// index.php — Página principal pública
+require_once 'config/database.php';
+
+$cf_msg = ''; $cf_tipo = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['enviar_contacto'])) {
+    $cf_nombre  = trim($_POST['cf_nombre']  ?? '');
+    $cf_correo  = trim($_POST['cf_correo']  ?? '');
+    $cf_asunto  = trim($_POST['cf_asunto']  ?? '');
+    $cf_mensaje = trim($_POST['cf_mensaje'] ?? '');
+
+    if ($cf_nombre && filter_var($cf_correo, FILTER_VALIDATE_EMAIL) && $cf_mensaje) {
+        // 1. Guardar en base de datos
+        $conn = conectar();
+        $stmt = $conn->prepare("
+            INSERT INTO mensajes_contacto (nombre, correo, asunto, mensaje)
+            VALUES (?, ?, ?, ?)
+        ");
+        $stmt->bind_param("ssss", $cf_nombre, $cf_correo, $cf_asunto, $cf_mensaje);
+        $guardado = $stmt->execute();
+        $conn->close();
+
+        // 2. Enviar correo al administrador — el Reply-To apunta al visitante
+        $asunto_correo = 'Contacto web: ' . ($cf_asunto ?: 'Sin asunto');
+        $html_cf = "
+        <html><body style='font-family:Arial,sans-serif;color:#333;'>
+        <div style='background:#003087;padding:16px 24px;'>
+            <h2 style='color:#fff;margin:0;'>🅿️ Parking Control — Nuevo Mensaje de Contacto</h2>
+        </div>
+        <div style='padding:20px 24px;'>
+            <table style='font-size:14px;'>
+                <tr><td style='padding:4px 12px 4px 0;color:#888;font-weight:700;'>Nombre:</td><td>" . htmlspecialchars($cf_nombre) . "</td></tr>
+                <tr><td style='padding:4px 12px 4px 0;color:#888;font-weight:700;'>Correo:</td><td><a href='mailto:$cf_correo'>$cf_correo</a></td></tr>
+                <tr><td style='padding:4px 12px 4px 0;color:#888;font-weight:700;'>Asunto:</td><td>" . htmlspecialchars($cf_asunto ?: '—') . "</td></tr>
+                <tr><td style='padding:4px 12px 4px 0;color:#888;font-weight:700;'>Fecha:</td><td>" . date('d/m/Y H:i') . "</td></tr>
+            </table>
+            <hr style='margin:16px 0;border:none;border-top:1px solid #eee;'>
+            <p style='font-weight:700;color:#555;margin-bottom:8px;'>Mensaje:</p>
+            <div style='background:#f8f9fa;padding:16px;border-radius:8px;border-left:4px solid #003087;line-height:1.7;'>
+                " . nl2br(htmlspecialchars($cf_mensaje)) . "
+            </div>
+            <p style='font-size:11px;color:#aaa;margin-top:20px;'>
+                Puedes responder directamente a este correo o escribir a <strong>$cf_correo</strong>.
+            </p>
+        </div>
+        </body></html>";
+
+        // From = sistema, Reply-To = correo del visitante para responder directo
+        $headers  = "MIME-Version: 1.0\r\n";
+        $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
+        $headers .= "From: Parking Control Web <no-reply@parkingcontrol.com>\r\n";
+        $headers .= "Reply-To: " . $cf_nombre . " <" . $cf_correo . ">\r\n";
+
+        $enviado = mail('info@parkMood.com', $asunto_correo, $html_cf, $headers);
+
+        if ($guardado) {
+            $cf_msg  = '¡Mensaje enviado! Te responderemos a <strong>' . htmlspecialchars($cf_correo) . '</strong> a la brevedad.';
+            $cf_tipo = 'success';
+        } else {
+            $cf_msg  = 'Hubo un problema al guardar el mensaje. Intenta de nuevo o llámanos.';
+            $cf_tipo = 'error';
+        }
+    } else {
+        $cf_msg  = 'Por favor completa todos los campos correctamente.';
+        $cf_tipo = 'error';
+    }
+}
+?>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<style>
+.hero-img {
+    position:relative;
+    overflow:hidden;
+}
+
+.carrusel img {
+    position:absolute;
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    opacity:0;
+    transform:scale(1.05);
+    transition:opacity 1s ease, transform 4s ease;
+}
+
+.carrusel img.active {
+    opacity:1;
+    transform:scale(1);
+}
+</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ParkingMood - Control inteligente para tu estacionamiento</title>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        :root { --verde:#28a745; --azul:#003087; --azul2:#0056b3; }
+        body { font-family:'Nunito',sans-serif; color:#333; }
+
+        /* NAVBAR */
+        nav.navbar {
+            display:flex; align-items:center; justify-content:space-between;
+            padding:14px 60px; background:#fff; box-shadow:0 2px 8px rgba(0,0,0,.08);
+            position:sticky; top:0; z-index:100;
+        }
+        .nav-logo { display:flex; align-items:center; gap:10px; text-decoration:none; }
+        .nav-logo .icon { width:42px; height:42px; background:var(--verde); border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; font-size:20px; font-weight:900; }
+        .nav-logo .text strong { font-size:17px; color:var(--azul); display:block; line-height:1.1; }
+        .nav-logo .text span { font-size:11px; color:var(--verde); text-transform:uppercase; letter-spacing:1px; font-weight:700; }
+        .nav-links { display:flex; align-items:center; gap:32px; }
+        .nav-links a { text-decoration:none; color:#555; font-weight:700; font-size:14px; transition:.2s; }
+        .nav-links a:hover { color:var(--azul); }
+        .btn-login { background:var(--verde); color:#fff !important; padding:10px 24px; border-radius:8px; }
+        .btn-login:hover { background:#1e7e34 !important; }
+
+        /* HERO */
+        .hero {
+            display:grid; grid-template-columns:1fr 1fr; min-height:500px; background:#f8f9fa;
+        }
+        .hero-text { padding:70px 60px; display:flex; flex-direction:column; justify-content:center; }
+        .hero-text h1 { font-size:42px; font-weight:900; line-height:1.15; color:var(--azul); }
+        .hero-text h1 span { color:var(--verde); }
+        .hero-text p { margin:18px 0 28px; font-size:16px; line-height:1.7; color:#555; max-width:480px; }
+        .hero-btns { display:flex; gap:14px; flex-wrap:wrap; }
+        .btn { display:inline-block; padding:12px 26px; border-radius:8px; font-weight:700; font-size:15px; text-decoration:none; transition:.2s; border:none; cursor:pointer; font-family:'Nunito',sans-serif; }
+        .btn-verde { background:var(--verde); color:#fff; }
+        .btn-verde:hover { background:#1e7e34; }
+        .btn-outline { background:transparent; color:var(--azul); border:2px solid var(--azul); }
+        .btn-outline:hover { background:var(--azul); color:#fff; }
+        .hero-img { position:relative; overflow:hidden; }
+        .hero-img img { width:100%; height:100%; object-fit:cover; }
+        .hero-img .overlay { position:absolute; inset:0; background:linear-gradient(90deg, rgba(248,249,250,.4), transparent); }
+
+        /* INFO BAR */
+        .info-bar {
+            background:var(--azul); color:#fff;
+            display:grid; grid-template-columns:repeat(4,1fr);
+            padding:28px 60px; gap:20px;
+        }
+        .info-item h4 { font-size:13px; font-weight:700; color:rgba(255,255,255,.6); text-transform:uppercase; letter-spacing:.8px; margin-bottom:6px; }
+        .info-item p, .info-item a { font-size:14px; color:rgba(255,255,255,.9); line-height:1.6; }
+        .info-item a { text-decoration:none; }
+        .info-item .socials { display:flex; gap:12px; margin-top:6px; }
+        .info-item .socials a { color:#fff; font-size:20px; }
+
+        /* MAP EMBED */
+        .map-embed {
+            margin-top:10px; border-radius:8px; overflow:hidden;
+            border:2px solid rgba(255,255,255,.2);
+        }
+        .map-embed iframe {
+            display:block; width:100%; height:140px; border:0;
+        }
+
+        /* SERVICES */
+        .section { padding:70px 60px; }
+        .section-title { text-align:center; margin-bottom:48px; }
+        .section-title h2 { font-size:34px; font-weight:900; color:var(--azul); }
+        .section-title p { color:#666; font-size:16px; margin-top:8px; }
+        .services-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:24px; }
+        .service-card {
+            background:#fff; border-radius:14px; padding:32px 26px;
+            box-shadow:0 4px 20px rgba(0,0,0,.07); text-align:center; transition:.3s;
+            border-bottom:4px solid transparent;
+        }
+        .service-card:hover { transform:translateY(-6px); border-bottom-color:var(--verde); }
+        .service-card .icon { font-size:38px; color:var(--verde); margin-bottom:18px; }
+        .service-card h3 { font-size:18px; font-weight:800; color:var(--azul); margin-bottom:10px; }
+        .service-card p { font-size:14px; color:#666; line-height:1.7; }
+
+        /* FEATURES SECTION */
+        .features-section {
+            padding:50px 60px; background:#fff;
+            border-top: 3px solid #f0f2f5;
+        }
+        .features-title {
+            text-align:center; margin-bottom:36px;
+        }
+        .features-title h3 {
+            font-size:22px; font-weight:900; color:var(--azul);
+            display:flex; align-items:center; justify-content:center; gap:10px;
+        }
+        .features-title h3 i { color:var(--verde); }
+        .features-title p { color:#888; font-size:14px; margin-top:6px; }
+        .features-grid {
+            display:grid; grid-template-columns:repeat(2,1fr); gap:18px; max-width:900px; margin:0 auto;
+        }
+        .feature-item {
+            display:flex; align-items:flex-start; gap:14px;
+            background:#f8f9fa; border-radius:12px; padding:20px 22px;
+            border-left:4px solid var(--verde); transition:.2s;
+        }
+        .feature-item:hover { background:#f0fff4; transform:translateX(4px); }
+        .feature-item .fi-icon {
+            width:42px; height:42px; background:var(--verde); border-radius:10px;
+            display:flex; align-items:center; justify-content:center;
+            color:#fff; font-size:18px; flex-shrink:0;
+        }
+        .feature-item .fi-text h4 { font-size:15px; font-weight:800; color:var(--azul); margin-bottom:4px; }
+        .feature-item .fi-text p { font-size:13px; color:#666; line-height:1.6; }
+
+        /* CONTACT FORM INSIDE FEATURES */
+        .contact-form-wrap {
+            display:grid; grid-template-columns:1fr 1.4fr; gap:0;
+            max-width:1000px; margin:48px auto 0;
+            background:#fff; border-radius:16px;
+            box-shadow:0 6px 32px rgba(0,0,0,.10);
+            overflow:hidden;
+        }
+        .contact-form-left {
+            background:var(--azul); color:#fff; padding:44px 36px;
+            display:flex; flex-direction:column; gap:16px;
+        }
+        .cf-badge {
+            display:inline-flex; align-items:center; gap:8px;
+            background:rgba(255,255,255,.15); border-radius:20px;
+            padding:5px 14px; font-size:12px; font-weight:700;
+            width:fit-content;
+        }
+        .contact-form-left h3 { font-size:24px; font-weight:900; margin:0; }
+        .contact-form-left p { font-size:14px; opacity:.85; line-height:1.7; margin:0; }
+        .cf-bullets { list-style:none; padding:0; display:flex; flex-direction:column; gap:8px; }
+        .cf-bullets li { display:flex; align-items:center; gap:10px; font-size:13px; opacity:.9; }
+        .cf-bullets li i { color:var(--verde); font-size:14px; }
+        .cf-info { display:flex; flex-direction:column; gap:8px; margin-top:4px; }
+        .cf-info div { display:flex; align-items:center; gap:10px; font-size:13px; opacity:.8; }
+        .cf-info div i { width:16px; color:rgba(255,255,255,.6); }
+        .contact-form-right { padding:36px 38px; background:#fff; }
+        .cf-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+        .cf-group { margin-bottom:14px; }
+        .cf-group label { display:block; font-size:12px; font-weight:700; color:#555; margin-bottom:6px; }
+        .cf-input-wrap { position:relative; }
+        .cf-input-wrap i { position:absolute; left:12px; top:50%; transform:translateY(-50%); color:#aaa; font-size:13px; }
+        .cf-input-wrap input {
+            width:100%; padding:10px 12px 10px 34px;
+            border:1.5px solid #dee2e6; border-radius:8px;
+            font-family:'Nunito',sans-serif; font-size:14px; color:#333;
+            transition:.2s; background:#f8f9fa;
+        }
+        .cf-input-wrap input:focus { outline:none; border-color:var(--verde); background:#fff; box-shadow:0 0 0 3px rgba(40,167,69,.1); }
+        .cf-group textarea {
+            width:100%; padding:10px 14px;
+            border:1.5px solid #dee2e6; border-radius:8px;
+            font-family:'Nunito',sans-serif; font-size:14px; color:#333;
+            resize:vertical; transition:.2s; background:#f8f9fa;
+        }
+        .cf-group textarea:focus { outline:none; border-color:var(--verde); background:#fff; box-shadow:0 0 0 3px rgba(40,167,69,.1); }
+        .contact-form-right button[type="submit"] {
+            width:100%; padding:13px; background:var(--azul); color:#fff;
+            border:none; border-radius:8px; font-family:'Nunito',sans-serif;
+            font-size:15px; font-weight:800; cursor:pointer; transition:.2s;
+            display:flex; align-items:center; justify-content:center; gap:10px;
+            margin-top:4px;
+        }
+        .contact-form-right button[type="submit"]:hover { background:#001f5c; }
+        .cf-alert { padding:12px 14px; border-radius:8px; margin-bottom:14px; font-size:13px; font-weight:600; }
+        .cf-alert-success { background:#d4edda; color:#155724; border-left:4px solid var(--verde); }
+        .cf-alert-error   { background:#f8d7da; color:#721c24; border-left:4px solid #dc3545; }
+
+        /* FOOTER */
+        footer { background:var(--azul); color:rgba(255,255,255,.6); text-align:center; padding:18px; font-size:13px; }
+        footer span { color:#fff; font-weight:700; }
+
+        @media(max-width:768px) {
+            .hero { grid-template-columns:1fr; }
+            .hero-img { height:250px; }
+            .info-bar { grid-template-columns:1fr 1fr; padding:24px; }
+            .section { padding:40px 20px; }
+            .features-section { padding:36px 20px; }
+            nav.navbar { padding:14px 20px; }
+            .nav-links { gap:16px; }
+            .services-grid { grid-template-columns:1fr; }
+            .features-grid { grid-template-columns:1fr; }
+            .contact-form-wrap { grid-template-columns:1fr; }
+            .contact-form-left { padding:28px 24px; }
+            .contact-form-right { padding:24px 20px; }
+            .cf-row { grid-template-columns:1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- NAVBAR -->
+<nav class="navbar">
+    <a href="index.php" class="nav-logo">
+        <div class="icon">PM</div>
+        <div class="text"><strong>PARKING</strong><span>CONTROL</span></div>
+    </a>
+    <div class="nav-links">
+        <a href="#">Inicio</a>
+        <a href="#">Nosotros</a>
+        <a href="#servicios">Servicios</a>
+        <a href="#">Tarifas</a>
+        <a href="#contacto">Contacto</a>
+        <a href="login.php" class="btn-login btn">Iniciar Sesión</a>
+    </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+    <div class="hero-text">
+        <h1>Control inteligente<br><span>para tu estacionamiento</span></h1>
+        <p>Nuestro sistema permite gestionar entradas, salidas, tiempos y cobros de manera eficiente y automática. Seguridad, rapidez y confianza en un solo lugar.</p>
+        <div class="hero-btns">
+            <a href="login.php" class="btn btn-verde">Conocer más</a>
+            <a href="#servicios" class="btn btn-outline">Nuestros servicios</a>
+        </div>
+    </div>
+    <div class="hero-img">
+        <div class="carrusel">
+    <div class="slides">
+        <img src="estacionamiento1.png">
+        <img src="estacionamiento2.png">
+        <img src="estacionamiento3.png">
+    </div>
+  
+</div>
+    </div>
+</section>
+
+<!-- INFO BAR / CONTACTO -->
+<div class="info-bar" id="contacto">
+    <div class="info-item">
+        <h4><i class="fas fa-bullseye"></i> Misión</h4>
+        <p>Brindar soluciones tecnológicas que faciliten el control y la administración de estacionamientos de forma eficiente.</p>
+    </div>
+    <div class="info-item">
+        <h4><i class="fas fa-eye"></i> Visión</h4>
+        <p>Ser líderes en sistemas de control de estacionamiento, reconocidos por nuestra innovación y servicio.</p>
+    </div>
+    <div class="info-item">
+        <h4><i class="fas fa-phone"></i> Contacto</h4>
+        <p>📞 961-151-89-72</p>
+        <a href="mailto:info@parkingcontrol.com">info@parkMood.com</a>
+        <p>Av. Estacionamiento ParkMood Elmar Seltzer, 29018 Tuxtla Gutiérrez, Chis</p>
+        <!-- MAPA DE UBICACIÓN -->
+        <div class="map-embed">
+            <iframe
+                src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d30596.73!2d-93.1189!3d16.7516!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x85ecd8434e3b9a5b%3A0x4a09523a8fe08be3!2sTuxtla%20Guti%C3%A9rrez%2C%20Chiapas!5e0!3m2!1ses!2smx!4v1716600000000!5m2!1ses!2smx"
+                allowfullscreen=""
+                loading="lazy"
+                referrerpolicy="no-referrer-when-downgrade"
+                title="Ubicación ParkingMood - Tuxtla Gutiérrez">
+            </iframe>
+        </div>
+    </div>
+    <div class="info-item">
+        <h4><i class="fas fa-share-alt"></i> Síguenos</h4>
+        <div class="socials">
+            <a href="https://www.facebook.com/yeraldine.suarez.96155"><i class="fab fa-facebook"></i></a>
+            <a href="https://www.instagram.com/rgz.ale_xs/"><i class="fab fa-instagram"></i></a>
+            <a href="https://wa.link/yf6b62"><i class="fab fa-whatsapp"></i></a>
+        </div>
+    </div>
+</div>
+
+<!-- SERVICES -->
+<section class="section" id="servicios" style="background:#f8f9fa;">
+    <div class="section-title">
+        <h2>Nuestros Servicios</h2>
+        <p>Todo lo que necesitas para gestionar tu estacionamiento en un solo lugar</p>
+    </div>
+    <div class="services-grid">
+        <div class="service-card">
+            <div class="icon"><i class="fas fa-car"></i></div>
+            <h3>Control de Entradas</h3>
+            <p>Registra de forma rápida la entrada de vehículos con placa y tipo de vehículo.</p>
+        </div>
+        <div class="service-card">
+            <div class="icon"><i class="fas fa-sign-out-alt"></i></div>
+            <h3>Registro de Salidas</h3>
+            <p>Calcula automáticamente el tiempo y el costo de cada vehículo al salir.</p>
+        </div>
+        <div class="service-card">
+            <div class="icon"><i class="fas fa-chart-line"></i></div>
+            <h3>Reportes y Estadísticas</h3>
+            <p>Visualiza ingresos, historial de vehículos y reportes filtrados por fecha.</p>
+        </div>
+        <div class="service-card">
+            <div class="icon"><i class="fas fa-tags"></i></div>
+            <h3>Gestión de Tarifas</h3>
+            <p>Configura precios por tipo de vehículo de manera sencilla y flexible.</p>
+        </div>
+        <div class="service-card">
+            <div class="icon"><i class="fas fa-users"></i></div>
+            <h3>Administración de Usuarios</h3>
+            <p>Gestiona roles de administradores, trabajadores y clientes del sistema.</p>
+        </div>
+        <div class="service-card">
+            <div class="icon"><i class="fas fa-shield-alt"></i></div>
+            <h3>Seguridad y Confiabilidad</h3>
+            <p>Acceso seguro con roles diferenciados y registro completo de operaciones.</p>
+        </div>
+    </div>
+</section>
+
+<!-- FUNCIONALIDADES DESTACADAS DEL SISTEMA -->
+<section class="features-section" id="funcionalidades">
+    <div class="features-title">
+        <h3><i class="fas fa-star"></i> Funcionalidades del Sistema</h3>
+        <p>Características clave que hacen de Parking Control una solución completa para tu negocio</p>
+    </div>
+
+    <!-- Fila superior: 4 tarjetas de funcionalidades -->
+    <div class="features-grid">
+        <div class="feature-item">
+            <div class="fi-icon"><i class="fas fa-file-pdf"></i></div>
+            <div class="fi-text">
+                <h4>Exportación de Reportes (PDF y Excel)</h4>
+                <p>Genera y descarga reportes completos en formato PDF o Excel con toda la información del módulo seleccionado. Los reportes funcionan como medio oficial de información entre el cliente y la empresa.</p>
+            </div>
+        </div>
+        <div class="feature-item">
+            <div class="fi-icon"><i class="fas fa-envelope"></i></div>
+            <div class="fi-text">
+                <h4>Envío de Correos Electrónicos</h4>
+                <p>Redacta y envía correos electrónicos directamente desde el sistema. Disponible incluso sin conexión a la red pública, usando configuración de correo interna.</p>
+            </div>
+        </div>
+        <div class="feature-item">
+            <div class="fi-icon"><i class="fas fa-print"></i></div>
+            <div class="fi-text">
+                <h4>Impresión por Sección</h4>
+                <p>Cada módulo del sistema cuenta con un botón de impresión que formatea automáticamente la pantalla actual para impresión, sin necesidad de configuraciones adicionales.</p>
+            </div>
+        </div>
+        <div class="feature-item">
+            <div class="fi-icon"><i class="fas fa-file-contract"></i></div>
+            <div class="fi-text">
+                <h4>Reportes como Medio de Información</h4>
+                <p>Los reportes generados sirven como documentos oficiales entre el cliente y la empresa, facilitando la comunicación y el seguimiento de operaciones del estacionamiento.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Formulario de contacto integrado -->
+    <div class="contact-form-wrap" id="contacto-form">
+        <div class="contact-form-left">
+            <div class="cf-badge"><i class="fas fa-envelope"></i> Contáctanos</div>
+            <h3>¿Tienes alguna duda?</h3>
+            <p>Envíanos un mensaje directamente desde aquí. Nuestro equipo te responderá a la brevedad posible.</p>
+            <ul class="cf-bullets">
+                <li><i class="fas fa-check-circle"></i> Respuesta en menos de 24 horas</li>
+                <li><i class="fas fa-check-circle"></i> Atención personalizada</li>
+                <li><i class="fas fa-check-circle"></i> Soporte técnico incluido</li>
+            </ul>
+            <div class="cf-info">
+                <div><i class="fas fa-phone"></i> 961-151-89-72</div>
+                <div><i class="fas fa-at"></i> info@parkMood.com</div>
+            </div>
+        </div>
+        <div class="contact-form-right">
+            <?php if ($cf_msg): ?>
+            <div class="cf-alert cf-alert-<?= $cf_tipo ?>">
+                <i class="fas fa-<?= $cf_tipo === 'success' ? 'check-circle' : 'exclamation-circle' ?>"></i>
+                <?= $cf_msg ?>
+            </div>
+            <?php endif; ?>
+            <form method="POST" action="#contacto-form">
+                <div class="cf-row">
+                    <div class="cf-group">
+                        <label>Nombre completo</label>
+                        <div class="cf-input-wrap">
+                            <i class="fas fa-user"></i>
+                            <input type="text" name="cf_nombre" placeholder="Tu nombre" required value="<?= htmlspecialchars($_POST['cf_nombre'] ?? '') ?>">
+                        </div>
+                    </div>
+                    <div class="cf-group">
+                        <label>Correo electrónico</label>
+                        <div class="cf-input-wrap">
+                            <i class="fas fa-envelope"></i>
+                            <input type="email" name="cf_correo" placeholder="correo@ejemplo.com" required value="<?= htmlspecialchars($_POST['cf_correo'] ?? '') ?>">
+                        </div>
+                    </div>
+                </div>
+                <div class="cf-group">
+                    <label>Asunto</label>
+                    <div class="cf-input-wrap">
+                        <i class="fas fa-tag"></i>
+                        <input type="text" name="cf_asunto" placeholder="Ej. Consulta sobre tarifas" value="<?= htmlspecialchars($_POST['cf_asunto'] ?? '') ?>">
+                    </div>
+                </div>
+                <div class="cf-group">
+                    <label>Mensaje</label>
+                    <textarea name="cf_mensaje" placeholder="Escribe aquí tu duda o comentario..." required rows="4"><?= htmlspecialchars($_POST['cf_mensaje'] ?? '') ?></textarea>
+                </div>
+                <button type="submit" name="enviar_contacto">
+                    <i class="fas fa-paper-plane"></i> Enviar Mensaje
+                </button>
+            </form>
+        </div>
+    </div>
+</section>
+
+<footer>
+    © 2026 <span>Parking Control</span>. Todos los derechos reservados.
+</footer>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+
+    let index = 0;
+    const images = document.querySelectorAll('.carrusel img');
+
+    setInterval(() => {
+        images[index].classList.remove('active');
+
+        index = (index + 1) % images.length;
+
+        images[index].classList.add('active');
+    }, 3000);
+
+});
+</script>
+</body>
+</html>
