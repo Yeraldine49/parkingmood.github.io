@@ -1,5 +1,5 @@
-<?php
-require_once 'config/database.php';
+<!DOCTYPE html>
+require_once 'config/database.html';
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
